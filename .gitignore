@@ -1,0 +1,21 @@
+# Ingress Decode Skill — .gitignore
+
+# 输出目录（原始文章、图片、索引等，不上传 GitHub）
+output/
+
+# Python 缓存
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# 爬虫相关脚本
+clean_article_chrome.py
+dedupe_articles.py
+scrape_bjres.py
