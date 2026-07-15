@@ -10,7 +10,8 @@ Ingress 官方（玩家称"猩猩"）通过 Investigation Blog、Ingress Report 
 
 ### 1.2 常见 Passcode 格式
 
-不同来源有不同的格式模板（`#` 表示数字，`x` 表示字母）：
+下表来自归档基础篇所记录的 2016 年历史规则（`#` 表示数字，`x` 表示字母）。它适合分析
+同一时期的旧题，不保证适用于后来活动或当前 passcode：
 
 | 来源 | 格式 | 数字范围 |
 |------|------|----------|
@@ -22,7 +23,25 @@ Ingress 官方（玩家称"猩猩"）通过 Investigation Blog、Ingress Report 
 
 **keyword** 是 passcode 的核心可读部分，通常是 Ingress 相关词汇（人物名、物品名、地名、事件名等）。
 
-### 1.3 判断结果是否像 Passcode
+### 1.3 把格式当作 crib，而不是答案
+
+归档文章经常先按预期格式定位数字位和 keyword 区，再分别变换。例如：
+
+- 变换保持数字位置，只对字母做 Atbash 或 ROT。
+- Hex 字节在预期数字位置有共同高位，据此识别 Hex Atbash。
+- 英文数字只露出前缀或后缀，按应为数字的位置补全。
+- 一个长串中数字数量正好对应一个或多个历史格式。
+
+这种方法可以缩小搜索空间，但有确认偏差风险。使用时同时保留：
+
+1. 原始字符与未经格式约束的转换结果。
+2. 假设的来源类型和格式模板。
+3. 每个切分边界的依据。
+4. 至少一个独立证据，例如标准解码、标题提示、keyword 来源或同组 code 规则。
+
+不能因为字符串能被切成 `xxx##word###xx` 就认定 `word` 是 keyword。
+
+### 1.4 判断结果是否像 Passcode
 
 - 字母与数字交替出现，有规律分段
 - 包含一个可识别的英文 keyword
@@ -30,7 +49,7 @@ Ingress 官方（玩家称"猩猩"）通过 Investigation Blog、Ingress Report 
 - 每段结果都有来源，而非硬凑
 - **反例**：一个普通英文单词没有数字搭配 → 可能只是中间线索
 
-### 1.4 Passcode 来源渠道
+### 1.5 Passcode 来源渠道
 
 - Investigation Blog 页面 HTML 中（F12 开发者工具可查）
 - 题图的 `alt` 属性、HTML class 等隐藏位置
@@ -53,6 +72,7 @@ Ingress 官方（玩家称"猩猩"）通过 Investigation Blog、Ingress Report 
 | 解码中间结果 | 某层解码后出现的英文词 |
 | 标题/文件名 | 标题里的异常词、谐音、错别字 |
 | 图片隐藏信息 | 图片文字、文件名、alt 文本 |
+| 同组其他 code | 数字 key、分隔符、keyword、读取方向或预期 code 数量 |
 
 ### 2.2 判断 Keyword 是否靠谱
 
@@ -97,7 +117,7 @@ ingresscodes 团队维护了一份 keyword 列表：
 
 | 资源 | 用途 |
 |------|------|
-| **[bjres.net](https://bjres.net)** | 本项目整理时参考的解迷教程来源；原文不随仓库分发 |
+| **[bjres.net](https://bjres.net)** | 教程文章的原始来源和线上上下文 |
 | **[ingress.codes](https://ingress.codes)** | passcode 格式与 keyword 列表 |
 | **[ingresscodes GitHub](https://github.com/ingresscodes/)** | keyword 列表仓库 |
 | **[jojoingresswotd.github.io](https://jojoingresswotd.github.io)** | WOTD passcode 来源 |

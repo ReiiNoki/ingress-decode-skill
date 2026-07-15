@@ -1,7 +1,7 @@
 # Ingress Decode Skill — .gitignore
 
 # 输出目录（原始文章、图片、索引等，不上传 GitHub）
-output/
+/output/
 
 # Python 缓存
 __pycache__/
