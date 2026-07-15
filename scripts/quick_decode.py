@@ -2,8 +2,8 @@
 """
 quick_decode.py — Ingress Passcode 解码快速工具箱
 
-提供 Atbash、ROT、Base64、Morse、键盘偏移、方阵重排、盲文等所有常用解码算法。
-核心功能 scan_all() 可一键跑完全部基础变换，快速缩小范围。
+提供 Atbash、ROT、Base 系列、Morse、键盘偏移、方阵重排、盲文等常见解码算法。
+核心功能 scan_all() 会运行与字符特征匹配的基础变换，帮助缩小范围。
 
 用法:
     python scripts/quick_decode.py                     # 运行内置示例
@@ -15,9 +15,34 @@ quick_decode.py — Ingress Passcode 解码快速工具箱
 from __future__ import annotations
 
 import base64
+import binascii
 import re
 import sys
 from typing import Optional
+
+
+HISTORICAL_PASSCODE_PATTERNS = {
+    "investigation_2016": re.compile(
+        r"^(?P<prefix>[A-Za-z]{3})(?P<n1>[2-9]{2})(?P<keyword>[A-Za-z]+)"
+        r"(?P<n2>[2-9]{3})(?P<suffix>[A-Za-z]{2})$"
+    ),
+    "wotd_2016": re.compile(
+        r"^(?P<a>[A-Za-z])(?P<n1>\d)(?P<b>[A-Za-z])(?P<n2>\d)"
+        r"(?P<keyword>[A-Za-z]+)(?P<c>[A-Za-z])(?P<n3>\d)(?P<suffix>[A-Za-z]{2})$"
+    ),
+    "ingress_report_forever": re.compile(
+        r"^(?P<keyword>[A-Za-z]+)(?P<n1>\d)(?P<a>[A-Za-z]{2})"
+        r"(?P<n2>\d{2})(?P<b>[A-Za-z]{2})(?P<n3>\d)$"
+    ),
+    "anomaly_2016": re.compile(
+        r"^(?P<prefix>[A-Za-z]{8})(?P<n1>[2-9])(?P<keyword>[A-Za-z]+)(?P<n2>[2-9])$"
+    ),
+    "old_2016": re.compile(
+        r"^(?P<n1>[2-9])(?P<prefix>[A-Za-z]{3})(?P<n2>[2-9])"
+        r"(?P<keyword>[A-Za-z]+)(?P<a>[A-Za-z])(?P<n3>[2-9])"
+        r"(?P<b>[A-Za-z])(?P<n4>[2-9])(?P<c>[A-Za-z])$"
+    ),
+}
 
 
 # ═══════════════════════════════════════════════
@@ -53,7 +78,10 @@ def atbash(s: str, flip_digits: bool = False) -> str:
 
 def hex_atbash(s: str) -> str:
     """Hex Atbash：对 0-9a-f 做前后对折 (0↔f, 1↔e, ..., 7↔8)"""
-    t = str.maketrans("0123456789abcdef", "fedcba9876543210")
+    t = str.maketrans(
+        "0123456789abcdefABCDEF",
+        "fedcba9876543210FEDCBA",
+    )
     return s.translate(t)
 
 
@@ -102,6 +130,66 @@ def rot47(s: str) -> str:
     return "".join(result)
 
 
+def gronsfeld(s: str, numeric_key: str, decrypt: bool = True) -> str:
+    """Gronsfeld 变换，用循环数字密钥对字母执行逐位 Caesar 移位。
+
+    非字母不消耗密钥位。解密默认向后移；设置 ``decrypt=False`` 可加密。
+    """
+    digits = [int(ch) for ch in numeric_key if ch.isdigit()]
+    if not digits:
+        raise ValueError("numeric_key must contain at least one digit")
+    result = []
+    key_index = 0
+    direction = -1 if decrypt else 1
+    for ch in s:
+        if ch.isascii() and ch.isalpha():
+            result.append(rot(ch, direction * digits[key_index % len(digits)]))
+            key_index += 1
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
+def vigenere(s: str, key: str, decrypt: bool = True) -> str:
+    """标准 Vigenere；非字母不消耗 key，大小写随输入保留。"""
+    shifts = [ord(ch.lower()) - ord("a") for ch in key if ch.isascii() and ch.isalpha()]
+    if not shifts:
+        raise ValueError("key must contain at least one ASCII letter")
+    result = []
+    key_index = 0
+    direction = -1 if decrypt else 1
+    for ch in s:
+        if ch.isascii() and ch.isalpha():
+            result.append(rot(ch, direction * shifts[key_index % len(shifts)]))
+            key_index += 1
+        else:
+            result.append(ch)
+    return "".join(result)
+
+
+def autokey_plaintext(s: str, key: str, decrypt: bool = True) -> str:
+    """明文 AutoKey；密钥流为 keyword 后接明文，非字母不消耗 key。"""
+    seed = [ord(ch.lower()) - ord("a") for ch in key if ch.isascii() and ch.isalpha()]
+    if not seed:
+        raise ValueError("key must contain at least one ASCII letter")
+    stream = list(seed)
+    result = []
+    key_index = 0
+    for ch in s:
+        if not (ch.isascii() and ch.isalpha()):
+            result.append(ch)
+            continue
+        shift = stream[key_index]
+        value = ord(ch.lower()) - ord("a")
+        plain_value = (value - shift) % 26 if decrypt else value
+        output_value = plain_value if decrypt else (value + shift) % 26
+        output = chr(ord("a") + output_value)
+        result.append(output.upper() if ch.isupper() else output)
+        stream.append(plain_value if decrypt else value)
+        key_index += 1
+    return "".join(result)
+
+
 # ═══════════════════════════════════════════════
 #  3. 编码 / 解码
 # ═══════════════════════════════════════════════
@@ -117,9 +205,53 @@ def decode_base64(s: str, try_pad: bool = True) -> Optional[str]:
         解码后的字符串，失败返回 None
     """
     try:
+        compact = re.sub(r"\s+", "", s)
         if try_pad:
-            s = s.strip() + "=" * ((4 - len(s.strip()) % 4) % 4)
-        return base64.b64decode(s).decode("utf-8", errors="replace")
+            compact += "=" * ((4 - len(compact) % 4) % 4)
+        raw = base64.b64decode(compact, validate=True)
+        return raw.decode("utf-8")
+    except Exception:
+        return None
+
+
+def decode_base32(s: str, try_pad: bool = True) -> Optional[str]:
+    """Base32 解码；自动忽略空白并可补齐 ``=``。"""
+    try:
+        compact = re.sub(r"\s+", "", s).upper()
+        if try_pad:
+            compact += "=" * ((8 - len(compact) % 8) % 8)
+        return base64.b32decode(compact, casefold=True).decode("utf-8")
+    except Exception:
+        return None
+
+
+def decode_base85(s: str, adobe: bool = False) -> Optional[str]:
+    """解码 RFC 1924 Base85；``adobe=True`` 时尝试 Ascii85。"""
+    try:
+        compact = re.sub(r"\s+", "", s).encode("ascii")
+        raw = base64.a85decode(compact, adobe=adobe) if adobe else base64.b85decode(compact)
+        return raw.decode("utf-8")
+    except Exception:
+        return None
+
+
+def decode_uu_line(s: str) -> Optional[str]:
+    """解码单行 uuencode 数据；多行文件应先保留原始换行逐行处理。"""
+    try:
+        return binascii.a2b_uu(s.encode("ascii")).decode("utf-8")
+    except Exception:
+        return None
+
+
+def xor_hex_with_text(hex_text: str, key: str) -> Optional[str]:
+    """将十六进制字节与循环文本 key 按位异或。"""
+    try:
+        data = bytes.fromhex(re.sub(r"\s+", "", hex_text))
+        key_bytes = key.encode("utf-8")
+        if not key_bytes:
+            return None
+        raw = bytes(value ^ key_bytes[i % len(key_bytes)] for i, value in enumerate(data))
+        return raw.decode("utf-8")
     except Exception:
         return None
 
@@ -226,7 +358,12 @@ def decode_morse(s: str, dot: str = ".", dash: str = "-",
         >>> decode_morse("-- / .... / -")
         'MHT'
     """
-    s = s.replace(dot, ".").replace(dash, "-")
+    if dot == dash:
+        raise ValueError("dot and dash must be different symbols")
+    placeholders = {dot: "\x00", dash: "\x01"}
+    for source, target in placeholders.items():
+        s = s.replace(source, target)
+    s = s.replace("\x00", ".").replace("\x01", "-")
     result = []
     for word in s.split(word_sep):
         for code in word.split(char_sep):
@@ -278,22 +415,30 @@ def keyboard_row_to_morse(s: str) -> str:
 # ═══════════════════════════════════════════════
 
 QWERTY_LAYER = [
+    "1234567890",
     "qwertyuiop",
-    "asdfghjkl",
-    "zxcvbnm",
+    "asdfghjkl;",
+    "zxcvbnm,./",
 ]
 
+QWERTY_SHIFTED_LAYER = [
+    "!@#$%^&*()",
+    "QWERTYUIOP",
+    "ASDFGHJKL:",
+    "ZXCVBNM<>?",
+]
 
 def _build_keyboard_map(shift: int = 1, mirror: bool = False):
     """生成键盘映射表"""
     mapping = {}
-    for row in QWERTY_LAYER:
+    for row in QWERTY_LAYER + QWERTY_SHIFTED_LAYER:
         n = len(row)
         for i, ch in enumerate(row):
             if mirror:
                 target = row[n - 1 - i]
             else:
-                target = row[(i + shift) % n]
+                target_index = i + shift
+                target = row[target_index] if 0 <= target_index < n else ch
             mapping[ch] = target
             mapping[ch.upper()] = target.upper()
     return mapping
@@ -459,6 +604,64 @@ def braille_multiply_dots(text: str, group: int = 2) -> list[int]:
 #  9. 其他编码
 # ═══════════════════════════════════════════════
 
+MULTITAP = {
+    "2": "abc", "3": "def", "4": "ghi", "5": "jkl",
+    "6": "mno", "7": "pqrs", "8": "tuv", "9": "wxyz",
+}
+
+
+def decode_multitap_pairs(s: str, order: str = "press-key") -> Optional[str]:
+    """解码两位一组的电话键盘码。
+
+    ``press-key`` 表示第一位是按键次数、第二位是键号，和归档文章 No.99、
+    No.145、No.408 的写法一致；``key-press`` 表示相反顺序。
+    """
+    digits = re.sub(r"\D", "", s)
+    if len(digits) % 2:
+        return None
+    output = []
+    for i in range(0, len(digits), 2):
+        first, second = digits[i], digits[i + 1]
+        presses, key = (first, second) if order == "press-key" else (second, first)
+        letters = MULTITAP.get(key)
+        if not letters or not presses.isdigit() or not 1 <= int(presses) <= len(letters):
+            return None
+        output.append(letters[int(presses) - 1])
+    return "".join(output)
+
+
+def decode_multitap_runs(s: str) -> Optional[str]:
+    """解码 ``777 666 8`` 这类重复按键式 multi-tap。"""
+    groups = re.findall(r"([2-9])\1*", re.sub(r"[\s-]+", "", s))
+    compact = re.sub(r"[\s-]+", "", s)
+    if not groups or sum(len(match.group(0)) for match in re.finditer(r"([2-9])\1*", compact)) != len(compact):
+        return None
+    output = []
+    for match in re.finditer(r"([2-9])\1*", compact):
+        key = match.group(1)
+        run = len(match.group(0))
+        letters = MULTITAP[key]
+        if run > len(letters):
+            return None
+        output.append(letters[run - 1])
+    return "".join(output)
+
+
+def decode_alternating_run_lengths(counts: str, start_bit: str = "0") -> Optional[str]:
+    """把一串十进制位解释为 0/1 交替游程长度，并按 8 位 ASCII 解码。"""
+    compact = re.sub(r"\s+", "", counts)
+    if not compact.isdigit() or start_bit not in {"0", "1"}:
+        return None
+    bit = start_bit
+    bits = []
+    for ch in compact:
+        bits.append(bit * int(ch))
+        bit = "1" if bit == "0" else "0"
+    binary = "".join(bits)
+    if not binary or len(binary) % 8:
+        return None
+    return decode_binary(binary, sep="")
+
 def leet_decode(s: str) -> str:
     """简单 Leetspeak 转字母（仅处理最常见替换）"""
     leet_map = {
@@ -478,6 +681,49 @@ def decode_url_encoded(s: str) -> Optional[str]:
         return None
 
 
+def character_profile(s: str) -> dict[str, object]:
+    """返回解题前最有用的长度、字符类别和矩阵因数信息。"""
+    compact = re.sub(r"\s+", "", s)
+    factors = [n for n in range(2, len(compact)) if len(compact) % n == 0]
+
+    def kind(ch: str) -> str:
+        if ch.islower():
+            return "a"
+        if ch.isupper():
+            return "A"
+        if ch.isdigit():
+            return "9"
+        if ch.isspace():
+            return "_"
+        return "!"
+
+    pattern = "".join(kind(ch) for ch in s)
+    collapsed = re.sub(r"(.)\1+", r"\1", pattern)
+    return {
+        "length": len(s),
+        "compact_length": len(compact),
+        "unique_characters": len(set(compact)),
+        "lowercase": sum(ch.islower() for ch in s),
+        "uppercase": sum(ch.isupper() for ch in s),
+        "digits": sum(ch.isdigit() for ch in s),
+        "symbols": sum(not ch.isalnum() and not ch.isspace() for ch in s),
+        "class_pattern": pattern,
+        "class_runs": collapsed,
+        "factors": factors,
+    }
+
+
+def match_historical_passcode(s: str) -> list[dict[str, object]]:
+    """匹配 2016 归档记录的格式；结果只是历史格式提示，不证明答案正确。"""
+    compact = re.sub(r"\s+", "", s)
+    matches = []
+    for source, pattern in HISTORICAL_PASSCODE_PATTERNS.items():
+        match = pattern.fullmatch(compact)
+        if match:
+            matches.append({"source": source, "parts": match.groupdict()})
+    return matches
+
+
 # ═══════════════════════════════════════════════
 #  10. 识别与辅助
 # ═══════════════════════════════════════════════
@@ -485,15 +731,18 @@ def decode_url_encoded(s: str) -> Optional[str]:
 def guess_encoding(s: str) -> list[str]:
     """猜测密文可能的编码类型，返回建议列表"""
     hints = []
-    n = len(s)
+    compact = re.sub(r"\s+", "", s)
+    n = len(compact)
     if re.fullmatch(r"[0-9\s]+", s):
         hints.append("A1Z26 / ASCII decimal / 坐标 / 元素序号")
     if re.fullmatch(r"[01\s]+", s):
         hints.append("Binary / Braille / 培根密码")
     if re.fullmatch(r"[.\-\s/]+", s):
         hints.append("Morse 或类 Morse")
-    if re.fullmatch(r"[A-Za-z0-9+/=]+", s) and n % 4 <= 1:
+    if re.fullmatch(r"[A-Za-z0-9+/=]+", compact) and n >= 8 and n % 4 in {0, 2, 3}:
         hints.append("Base64")
+    if re.fullmatch(r"[A-Z2-7=]+", compact, re.IGNORECASE) and n >= 8:
+        hints.append("Base32")
     if re.fullmatch(r"[0-9a-fA-F\s]+", s):
         hints.append("Hex")
     if re.search(r"[\u2800-\u28FF]", s):
@@ -544,10 +793,63 @@ def scan_all(s: str) -> dict[str, str]:
     result["keyboard_right"] = keyboard_shift(s, "right")
     result["keyboard_mirror"] = keyboard_shift(s, "mirror")
 
-    # Base64
+    compact = re.sub(r"\s+", "", s)
+
+    # Base family
     b64 = decode_base64(s)
     if b64:
         result["base64"] = b64
+    b32 = decode_base32(s)
+    if b32:
+        result["base32"] = b32
+    b85 = decode_base85(s)
+    if b85:
+        result["base85"] = b85
+
+    # Numeric and symbol encodings. Only add successful, printable results.
+    if re.fullmatch(r"[0-9a-fA-F\s]+", s) and len(re.sub(r"\s+", "", s)) % 2 == 0:
+        decoded = decode_hex(s)
+        if decoded and decoded.isprintable():
+            result["hex"] = decoded
+    if re.fullmatch(r"[01\s]+", s):
+        decoded = decode_binary(s, sep="" if " " not in s.strip() else " ")
+        if decoded and decoded.isprintable():
+            result["binary"] = decoded
+    if re.fullmatch(r"(?:\d{2,3}[\s,;:/-]*)+", s):
+        tokens = re.findall(r"\d{2,3}", s)
+        decoded = decode_ascii_decimal(" ".join(tokens))
+        if decoded and decoded.isprintable():
+            result["ascii_decimal"] = decoded
+    numeric_tokens = re.findall(r"\d+", s)
+    if numeric_tokens and re.fullmatch(r"[\d\s,;:/-]+", s):
+        if all(1 <= int(token) <= 26 for token in numeric_tokens):
+            result["a1z26"] = a1z26(" ".join(numeric_tokens))
+    if re.fullmatch(r"[.\-/\s]+", s):
+        result["morse"] = decode_morse(s)
+        result["morse_swapped"] = decode_morse(s, dot="-", dash=".")
+    if re.fullmatch(r"(?:[1-4][2-9][\s-]*)+", s):
+        for order in ("press-key", "key-press"):
+            decoded = decode_multitap_pairs(s, order)
+            if decoded:
+                result[f"multitap_{order}"] = decoded
+    if re.fullmatch(r"(?:([2-9])\1*[\s-]*)+", s):
+        decoded = decode_multitap_runs(s)
+        if decoded:
+            result["multitap_runs"] = decoded
+    if compact.isdigit() and sum(int(ch) for ch in compact) % 8 == 0:
+        for start_bit in ("0", "1"):
+            decoded = decode_alternating_run_lengths(compact, start_bit)
+            if decoded and decoded.isprintable():
+                result[f"rle_start_{start_bit}"] = decoded
+
+    # URL and leetspeak are cheap and preserve useful evidence.
+    if "%" in s:
+        decoded = decode_url_encoded(s)
+        if decoded and decoded != s:
+            result["url_decode"] = decoded
+    leet = leet_decode(s)
+    if leet != s:
+        result["leetspeak"] = leet
 
     # 矩阵尝试（只取前几种，避免输出过多）
     rect_results = try_all_rect(s)
@@ -556,6 +858,18 @@ def scan_all(s: str) -> dict[str, str]:
 
     # 猜测编码类型
     guesses = guess_encoding(s)
+    profile = character_profile(s)
+    format_matches = match_historical_passcode(s)
+    if format_matches:
+        result["historical_format"] = ", ".join(
+            f"{match['source']} keyword={match['parts'].get('keyword')}"
+            for match in format_matches
+        )
+    print(
+        f"[字符概况] 长度={profile['length']} 去空白={profile['compact_length']} "
+        f"数字={profile['digits']} 符号={profile['symbols']} 因数={profile['factors']}",
+        file=sys.stderr,
+    )
     print(f"[建议优先尝试] {' / '.join(guesses)}", file=sys.stderr)
 
     return result

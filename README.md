@@ -1,7 +1,7 @@
 # ingress-decode-skill
 
-参考 bjres.net Ingress Passcode 解迷教程整理的解密技能包，包含知识库、
-经过状态标注的案例和可直接运行的解码工具箱。
+参考 bjres.net Ingress Passcode 解迷教程提炼的解密技能包，包含自足的知识库、
+经过状态标注的精选案例和可直接运行的解码工具箱。运行时不依赖原始文章归档。
 
 > 既可安装为 Codex Skill，也可作为玩家自学手册。
 
@@ -35,7 +35,8 @@ python scripts/quick_decode.py "cbt33nzplgl878iw"
 ```
 
 要求 Python 3.9 或更高版本；快速解码工具仅使用标准库。命令会输出 Reverse、Atbash、
-ROT、键盘偏移、Base64、矩阵重排等候选结果。候选结果仍需根据题面和格式验证。
+ROT、键盘偏移、Base32/Base64/Base85、数值编码和矩阵重排等候选结果。候选结果仍需根据
+题面和格式验证。
 
 ### 2.2 运行内置示例
 
@@ -55,6 +56,15 @@ python scripts/quick_decode.py
 - `references/image-clues.md` — 图片、元数据、颜色、动画、地图与页面检查
 - `references/passcode-format.md` — passcode、keyword 与外部线索
 - `references/examples.md` — 完整案例、验证状态与复盘
+
+### 2.4 隐私与发布
+
+抓取的原始文章、图片和索引只保存在根目录的 `output/` 中。该目录已被
+`.gitignore` 排除，Skill 运行时也不会读取它。发布到 GitHub 时只提交本页目录结构中
+列出的知识库和工具即可，不需要上传完整文章，也不需要在解题时做全量搜索。
+
+使用 Git 提交前可运行 `git status --ignored`，确认 `output/` 显示为 ignored。若通过网页
+手动上传文件，`.gitignore` 不会代替你过滤文件，请不要选择 `output/`。
 
 ---
 
@@ -87,7 +97,7 @@ SKILL.md（入口）
 ├── → references/cipher-patterns.md  密码算法详解
 ├── → references/passcode-format.md  格式与线索
 ├── → references/examples.md         案例复盘
-└── → scripts/quick_decode.py        Python 工具
+└── → scripts/quick_decode.py        Python 解码工具
 ```
 
 ---
@@ -99,12 +109,19 @@ SKILL.md（入口）
 | `atbash(s)`                                                | 字母前后对折                 |
 | `rot(s, n)` / `rot13(s)` / `rot5(s)`                   | Caesar 移位系列              |
 | `decode_base64(s)`                                         | Base64（自动补 pad）         |
+| `decode_base32(s)` / `decode_base85(s)`                    | Base32 / Base85              |
+| `decode_uu_line(s)` / `xor_hex_with_text(s, key)`          | UUencode / XOR               |
 | `decode_hex(s)` / `decode_binary(s)` / `a1z26(s)`      | Hex / Binary / A1Z26         |
 | `decode_morse(s)` / `keyboard_row_to_morse(s)`           | Morse 解码 / 键盘行 Morse    |
 | `keyboard_shift(s, direction)`                             | QWERTY 左移 / 右移 / 镜像    |
 | `read_rows_bottom_up(s, cols)` / `read_columns(s, cols)` | 矩阵重排                     |
 | `decode_rail_fence(s, rails)`                              | 栅栏密码                     |
+| `gronsfeld(s, numeric_key)`                                | 数字密钥逐位 Caesar          |
+| `vigenere(s, key)` / `autokey_plaintext(s, key)`           | Vigenere / 明文 AutoKey      |
+| `decode_multitap_pairs(s)` / `decode_multitap_runs(s)`     | 电话键盘编码                 |
+| `decode_alternating_run_lengths(s)`                        | 交替 0/1 游程解码            |
 | `braille_to_text(s)` / `braille_multiply_dots(text)`     | 盲文转字母 / 点数运算        |
+| `character_profile(s)`                                     | 字符类别、长度与因数概况     |
 | `guess_encoding(s)`                                        | 自动识别密文编码类型         |
 | `scan_all(s)`                                              | **一键跑全部基础变换** |
 
