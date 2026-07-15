@@ -7,6 +7,16 @@
 
 ---
 
+## 核心能力
+
+- 按“观察、假设、变换、验证”的流程分析题面，而不是从工具输出中挑一个像答案的结果。
+- 覆盖常见经典密码、文本编码、键盘映射、矩阵重排、电话键盘、游程编码和多层组合题。
+- 处理图片、二维码、颜色、动画、地图、HTML 隐藏信息以及多个 code 之间的依赖关系。
+- 用历史 passcode 格式辅助分段，同时保留独立证据，降低按预期格式硬凑答案的风险。
+- 只携带提炼后的知识、精选案例和确定性工具，不读取或分发完整文章归档。
+
+---
+
 ## 1. 目录结构
 
 ```text
@@ -20,8 +30,10 @@ ingress-decode-skill/
 │   ├── image-clues.md
 │   ├── passcode-format.md
 │   └── examples.md
-└── scripts/
-    └── quick_decode.py               ← 本地解码工具箱
+├── scripts/
+│   └── quick_decode.py               ← 本地解码工具箱
+└── tests/
+    └── test_quick_decode.py          ← 解码函数回归测试
 ```
 
 ---
@@ -37,6 +49,9 @@ python scripts/quick_decode.py "cbt33nzplgl878iw"
 要求 Python 3.9 或更高版本；快速解码工具仅使用标准库。命令会输出 Reverse、Atbash、
 ROT、键盘偏移、Base32/Base64/Base85、数值编码和矩阵重排等候选结果。候选结果仍需根据
 题面和格式验证。
+
+`scan_all()` 适合发现基础变换候选。Vigenere、AutoKey、Gronsfeld 和 XOR 等需要密钥的算法，
+仍应结合题面线索单独调用对应函数，避免没有依据地穷举。
 
 ### 2.2 运行内置示例
 
@@ -59,9 +74,10 @@ python scripts/quick_decode.py
 
 ### 2.4 隐私与发布
 
-抓取的原始文章、图片和索引只保存在根目录的 `output/` 中。该目录已被
-`.gitignore` 排除，Skill 运行时也不会读取它。发布到 GitHub 时只提交本页目录结构中
-列出的知识库和工具即可，不需要上传完整文章，也不需要在解题时做全量搜索。
+如果使用配套爬虫在本机生成了原始文章、图片和索引，它们只保存在根目录的 `output/` 中。
+该目录已被 `.gitignore` 排除，公开仓库中的 Skill 运行时也不会读取它。发布到 GitHub 时
+只提交本页目录结构中列出的知识库、工具和测试即可，不需要上传完整文章，也不需要在解题时
+做全量搜索。
 
 使用 Git 提交前可运行 `git status --ignored`，确认 `output/` 显示为 ignored。若通过网页
 手动上传文件，`.gitignore` 不会代替你过滤文件，请不要选择 `output/`。
@@ -127,7 +143,21 @@ SKILL.md（入口）
 
 ---
 
-## 5. License
+## 5. 验证
+
+工具箱只使用 Python 标准库。提交修改前运行：
+
+```powershell
+python -m unittest discover -s tests -v
+python -m py_compile scripts\quick_decode.py
+```
+
+测试覆盖典型归档案例、标准密码示例和曾经容易出错的边界行为。测试通过只说明函数实现符合
+既定规则，不代表任意候选结果都是正确 passcode；最终仍需按 `references/workflow.md` 验证。
+
+---
+
+## 6. License
 
 本仓库中由项目作者原创的代码和文档采用 [MIT License](LICENSE)。
 
